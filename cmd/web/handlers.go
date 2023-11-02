@@ -197,6 +197,7 @@ func (app *application) userLogin(w http.ResponseWriter, r *http.Request) {
 	data.Form = userLoginForm{}
 	app.render(w, http.StatusOK, "login.tmpl.html", data)
 }
+
 func (app *application) userLoginPost(w http.ResponseWriter, r *http.Request) {
 	var form userLoginForm
 
@@ -238,6 +239,12 @@ func (app *application) userLoginPost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	app.sessionManager.Put(r.Context(), "authenticatedUserID", id)
+
+	path := app.sessionManager.PopString(r.Context(), "redirectPathAfterLogin")
+	if path != "" {
+		http.Redirect(w, r, path, http.StatusSeeOther)
+		return
+	}
 
 	http.Redirect(w, r, "/snippet/create", http.StatusSeeOther)
 
