@@ -261,6 +261,62 @@ func (app *application) userLogoutPost(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+type accountPasswordUpateForm struct {
+	CurrentPassword         string `form:"currentpassword"`
+	NewPassword             string `form:"newpassword"`
+	NewPasswordConfirmation string `form:"newpasswordconfirmation"`
+	validator.Validator     `form:"-"`
+}
+
+func (app *application) accountPasswordUpate(w http.ResponseWriter, r *http.Request) {
+	data := app.newTemplateData(r)
+	data.Form = accountPasswordUpateForm{}
+	app.render(w, http.StatusOK, "password.tmpl.html", data)
+}
+
+func (app *application) accountPasswordUpatePost(w http.ResponseWriter, r *http.Request) {
+	var accpassform accountPasswordUpateForm
+
+	err := app.decodePostForm(r, &accpassform)
+	if err != nil {
+		app.clientError(w, http.StatusBadRequest)
+		return
+	}
+
+	accpassform.CheckField(validator.NotBlank(accpassform.CurrentPassword), "currentpassword", "This field cannot be blank")
+	accpassform.CheckField(validator.NotBlank(accpassform.NewPassword), "newpassword", "This field cannot be blank")
+	accpassform.CheckField(validator.MinChars(accpassform.NewPassword, 8), "newpassword", "This field must be at least 8 characters long")
+	accpassform.CheckField(validator.NotBlank(accpassform.NewPasswordConfirmation), "newpasswordconfirmation", "This field cannot be blank")
+	accpassform.CheckField(accpassform.NewPassword == accpassform.NewPasswordConfirmation, "newpasswordconfirmation", "Passwords do not match")
+
+	if !accpassform.Valid() {
+		data := app.newTemplateData(r)
+		data.Form = accpassform
+		app.render(w, http.StatusUnprocessableEntity, "password.tmpl.html", data)
+		return
+	}
+
+	id := app.sessionManager.GetInt(r.Context(), "authenticatedUserID")
+	err = app.users.PasswordUpdate(id, accpassform.CurrentPassword, accpassform.NewPassword)
+	if err != nil {
+		if errors.Is(err, models.ErrInvalidCredentials) {
+			accpassform.AddNonFieldError("Current Password is incorrect")
+
+			data := app.newTemplateData(r)
+			data.Form = accpassform
+
+			app.render(w, http.StatusBadRequest, "password.tmpl.html", data)
+		} else {
+			app.serverError(w, err)
+		}
+		return
+	}
+
+	app.sessionManager.Put(r.Context(), "flash", "Your password has been successfully changed")
+
+	http.Redirect(w, r, "/account/view", http.StatusSeeOther)
+}
+
 func ping(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("OK"))
 }
